@@ -11,6 +11,10 @@ import (
 	txTypes "github.com/cosmos/cosmos-sdk/types/tx"
 )
 
+// defaultQueryTimeout bounds a query context when the configured timeout cannot
+// be parsed. Without it a malformed config would yield a context with no deadline.
+const defaultQueryTimeout = 30 * time.Second
+
 type Query struct {
 	Client  *client.ChainClient
 	Options *QueryOptions
@@ -18,7 +22,14 @@ type Query struct {
 
 // GetQueryContext returns a context that includes the height and uses the timeout from the config
 func (q *Query) GetQueryContext() (context.Context, context.CancelFunc) {
-	timeout, _ := time.ParseDuration(q.Client.Config.Timeout) // Timeout is validated in the config so no error check
+	// Propagate the parse failure instead of discarding it: the ignored error
+	// yields a zero Duration, so the context would have no deadline at all.
+	timeout, err := time.ParseDuration(q.Client.Config.Timeout)
+	if err != nil || timeout <= 0 {
+		// Fall back to a bounded default rather than creating a context that can
+		// never time out; Init() rejects the same misconfiguration on startup.
+		timeout = defaultQueryTimeout
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	return ctx, cancel
 }

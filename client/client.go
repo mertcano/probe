@@ -4,6 +4,7 @@ package client
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -43,7 +44,16 @@ func NewChainClient(ccc *ChainClientConfig) (*ChainClient, error) {
 
 func (cc *ChainClient) Init() error {
 
-	timeout, _ := time.ParseDuration(cc.Config.Timeout)
+	// Do not swallow the parse error: an empty or malformed Timeout string makes
+	// time.ParseDuration return a zero Duration, which would silently disable the
+	// HTTP client timeout and let RPC calls hang indefinitely.
+	timeout, err := time.ParseDuration(cc.Config.Timeout)
+	if err != nil {
+		return fmt.Errorf("invalid timeout %q in chain client config: %w", cc.Config.Timeout, err)
+	}
+	if timeout <= 0 {
+		return fmt.Errorf("timeout %q in chain client config must be positive", cc.Config.Timeout)
+	}
 	rpcClient, err := NewRPCClient(cc.Config.RPCAddr, timeout, cc.Config.Debug)
 	if err != nil {
 		return err
